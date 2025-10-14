@@ -229,7 +229,7 @@ timing of upcoming events. */
 event set_dtmax (i++,last) dtmax = DT;
 
 event stability (i++,last) {
-  dt = dtnext (stokes ? dtmax : timestep (uf, dtmax));
+  dt = dtnext (stokes ? dtmax : timestep (uf, dtmax));  //设置时间步长dt
 }
 
 /**
@@ -289,7 +289,7 @@ void prediction()
     }        //2
 
   trash ({uf});
-  foreach_face() {
+  foreach_face() {             //计算面速度场uf
     double un = dt*(u.x[] + u.x[-1])/(2.*Delta), s = sign(un);
     int i = -(s + 1.)/2.;
     uf.x[] = u.x[i] + (g.x[] + g.x[-1])*dt/4. + s*(1. - s*un)*du.x[i]*Delta/2.;
@@ -320,12 +320,12 @@ compute the velocity advection term, using the standard
 Bell-Collela-Glaz advection scheme for each component of the velocity
 field. */
 
-event advection_term (i++,last)
+event advection_term (i++,last)      //对流项计算
 {
-  if (!stokes) {
-    prediction();
-    mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);
-    advection ((scalar *){u}, uf, dt, (scalar *){g});
+  if (!stokes) {                    //若为斯托克斯流，跳过计算对流项
+    prediction();                   //中间速度预测
+    mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);    //半步压力投影
+    advection ((scalar *){u}, uf, dt, (scalar *){g});      //显式推进对流项,更新速度场
   }
 }
 
