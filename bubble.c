@@ -8,7 +8,7 @@ We use the centered Navier--Stokes solver and log performance
 statistics. */
 
 #include "navier-stokes/centered.h"
-#include "navier-stokes/perfs.h"
+#include "navier-stokes/perfs.h" 
 
 /**
 We have two phases e.g. air and water. For large viscosity and density
@@ -16,7 +16,7 @@ ratios, the harmonic mean for the viscosity tends to work better than
 the default arithmetic mean. We "overload" the default by defining the
 *mu()* macro before including the code for two phases. */
 
-#define mu(f)  (1./(clamp(f,0,1)*(1./mu1 - 1./mu2) + 1./mu2))
+#define mu(f)  (1./(clamp(f,0,1)*(1./mu1 - 1./mu2) + 1./mu2))  //使用粘度的调和平均值代替默认的算术平均值
 #include "two-phase.h"
 
 /**
@@ -48,14 +48,14 @@ We try to replicate the results of [Cano-Lozano et al,
 the ratios above, there are two independent parameters which can be
 described by the Galilei number
 $$
-Ga^2 = \frac{g D^3}{\nu^2}
+Ga^2 = \frac{g D^3}{\nu^2}     //Ga数表征重力驱动力 与 黏性阻力 的相对强度，控制气泡上升速度与流动稳定性
 $$
 with $g$ the acceleration of gravity, $D$ the diameter of the bubble
 and $\nu$ the kinematic viscosity of the outer fluid; and the
 [Bond/Eötvös](https://en.wikipedia.org/wiki/E%C3%B6tv%C3%B6s_number)
 number
 $$
-Bo = \frac{\rho g D^2}{\sigma}
+Bo = \frac{\rho g D^2}{\sigma}  //Bo数表征重力（浮力）与表面张力之间的相对强弱，Bo数越大，气泡/液滴趋于保持球形，控制气泡的形变
 $$
 with $\rho$ the density of the outer fluid and $\sigma$ the surface
 tension coefficient.
@@ -83,7 +83,7 @@ maximum time for the simulation comparable to the domain size. */
 
 const double WIDTH = 120. [1];
 const double Zi = 3.5;
-int LEVEL = 12;
+int LEVEL = 12;               //定义初始条件（包括参数的定义、计算域、气泡的初始位置等）
 
 /**
 The main function can take two optional parameters: the maximum level
@@ -92,7 +92,7 @@ of adaptive refinement (as well as an optional maximum runtime). */
 int main (int argc, char * argv[]) {
   maxruntime (&argc, argv);
   if (argc > 1)
-    LEVEL = atoi (argv[1]);
+    LEVEL = atoi (argv[1]);             //从命令行读取运行参数，设置模拟最大运行时间，并根据输入设置网格分辨率等级（LEVEL）
   
   /**
   We set the domain geometry and initial refinement. */
@@ -129,8 +129,8 @@ of diameter unity. */
 
 event init (t = 0) {
   if (!restore (file = "restart")) {
-    refine (sq(x) + sq(y - Zi) + sq(z) - sq(0.75) < 0 && level < LEVEL);
-    fraction (f, sq(x) + sq(y - Zi) + sq(z) - sq(.5));
+    refine (sq(x) + sq(y - Zi) + sq(z) - sq(0.75) < 0 && level < LEVEL);   //在气泡区域细化网格，使该区域的分辨率更高
+    fraction (f, sq(x) + sq(y - Zi) + sq(z) - sq(.5));                     //根据给定的标量场φ(x) 定义体积分数函数 f,初始化两相流中界面的位置:若 φ < 0，则 f = 0（气泡内部）φ > 0，则 f = 1（外部流体）
   }
 }
 
@@ -141,7 +141,7 @@ direction. */
 event acceleration (i++) {
   face vector av = a;
   foreach_face(y)
-    av.y[] -= 1.;
+    av.y[] -= 1.;     //遍历所有 y 方向的网格面，在 y 方向上施加 -1 的加速度（沿 负 y 方向、大小为 1 ）
 }
 
 /**
@@ -150,7 +150,7 @@ velocity field. */
 
 event adapt (i++) {
   double uemax = 1e-2;
-  adapt_wavelet ({f,u}, (double[]){0.01,uemax,uemax,uemax}, LEVEL, 5);
+  adapt_wavelet ({f,u}, (double[]){0.01,uemax,uemax,uemax}, LEVEL, 5);   //体积分数和速度场的变化来判断是否细化网格
 }
 
 /**
@@ -164,15 +164,15 @@ event logfile (i += 10) {
   double vbx = 0., vby = 0., vbz = 0.;
   foreach(reduction(+:xb) reduction(+:yb) reduction(+:zb)
 	  reduction(+:vbx) reduction(+:vby) reduction(+:vbz)
-	  reduction(+:sb)) {
-    double dv = (1. - f[])*dv();
+	  reduction(+:sb)) {               //计算气泡位置（质心坐标）、体积、速度
+    double dv = (1. - f[])*dv();     
     xb += x*dv;
     yb += y*dv;
     zb += z*dv;
     vbx += u.x[]*dv;
     vby += u.y[]*dv;
     vbz += u.z[]*dv;
-    sb += dv;
+    sb += dv; 
   }
   fprintf (stderr,
 	   "%.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f\n", 
@@ -193,14 +193,14 @@ event snapshot (t = 1; t <= MAXTIME; t++)
 {
   scalar l2[], omegay[];
 #if dimension == 3
-  lambda2 (u, l2);
+  lambda2 (u, l2);     //用于涡旋可视化的 λ2字段的值
   foreach()
-    omegay[] = (u.z[1] - u.z[-1] - u.x[0,0,1] + u.x[0,0,-1])/(2.*Delta);
+    omegay[] = (u.z[1] - u.z[-1] - u.x[0,0,1] + u.x[0,0,-1])/(2.*Delta);   //流向涡度 ωy=∂xuz−∂zux 的值
 #endif
   
-  char name[80];
-  sprintf (name, "dump-%03d", (int) t);
-  dump (file = name);
+  char name[80];                              //定义字符串缓冲区，用来存放文件名
+  sprintf (name, "dump-%03d", (int) t);      //生成格式化文件名，如 "dump-001"
+  dump (file = name);                        //将当前模拟的全部数据保存到一个“快照”文件中
 }
 
 /**
