@@ -82,14 +82,14 @@ balanced by the pressure gradient. Taking care of boundary orientation
 and staggering of $\mathbf{a}$, this can be written */
 
 #if EMBED
-# define neumann_pressure(i) (alpha.n[i] ? a.n[i]*fm.n[i]/alpha.n[i] :	\\alpha.n[i]定义为比体积即1/ρ
+# define neumann_pressure(i) (alpha.n[i] ? a.n[i]*fm.n[i]/alpha.n[i] :	//alpha.n[i]定义为比体积即1/ρ
 			      a.n[i]*rho[]/(cm[] + SEPS))
 #else
 # define neumann_pressure(i) (a.n[i]*fm.n[i]/alpha.n[i])  //定义为∂p/∂n=a/alpha即ρa
 #endif
 
-p[right] = neumann (neumann_pressure(ghost));//使用右边界的外侧面，即ghost面
-p[left]  = neumann (- neumann_pressure(0));//使用左边界的内侧面，即网格内部面
+p[right] = neumann (neumann_pressure(ghost));   //使用右边界的外侧面，即ghost面
+p[left]  = neumann (- neumann_pressure(0));    //使用左边界的内侧面，即网格内部面
 
 #if AXI
 uf.n[bottom] = 0.;
@@ -144,11 +144,11 @@ event defaults (i = 0)
   The default density field is set to unity (times the metric and the
   solid factors). */
 
-  if (alpha.x.i == unityf.x.i) {
+  if (alpha.x.i == unityf.x.i) {     //默认单相流、均匀密度流体
     alpha = fm;
     rho = cm;
   }
-  else if (!is_constant(alpha.x)) {
+  else if (!is_constant(alpha.x)) {   //如果 α（比体积）不是常数（即流体密度随空间变化），则我们需要更新它，使它在边界或截断面上乘以局部面系数 fm.x[]
     face vector alphav = alpha;
     foreach_face()
       alphav.x[] = fm.x[];
@@ -184,7 +184,7 @@ event defaults (i = 0)
 
   foreach()
     foreach_dimension()
-      dimensional (u.x[] == Delta/t);
+      dimensional (u.x[] == Delta/t);    //设置网格大小
 }
 
 
@@ -192,7 +192,7 @@ event defaults (i = 0)
 We had some objects to display by default. */
 
 event default_display (i = 0)
-  display ("squares (color = 'u.x', spread = -1);");
+  display ("squares (color = 'u.x', spread = -1);");  //bview 绘图命令字符串, squares: 绘制方格图（每个网格单元显示为一个方块）color = 'u.x':用颜色显示速度分量 u.x spread = -1:平滑或插值参数（-1 表示启用基于父网格的平滑显示）
 
 /**
 After user initialisation, we initialise the face velocity and fluid
@@ -202,9 +202,9 @@ double dtmax;
 
 event init (i = 0)
 {
-  trash ({uf});
+  trash ({uf}); //跟踪uf
   foreach_face()
-    uf.x[] = fm.x[]*face_value (u.x, 0);
+    uf.x[] = fm.x[]*face_value (u.x, 0); //u 中心速度 uf 面速度 把单元中心速度 u 插值到面上
 
   /**
   We update fluid properties. */
@@ -267,17 +267,17 @@ void prediction()
     du.x = s;
   }
 
-  if (u.x.gradient)
+  if (u.x.gradient)                 //1
     foreach()
       foreach_dimension() {
-#if EMBED
-        if (!fs.x[] || !fs.x[1])
+#if EMBED         
+        if (!fs.x[] || !fs.x[1]) //fs.x[] 表示当前面是否属于流体
 	  du.x[] = 0.;
 	else
 #endif
 	  du.x[] = u.x.gradient (u.x[-1], u.x[], u.x[1])/Delta;
-      }
-  else
+      }              //1 如果用户给了自定义梯度函数(u.x.gradient)，则使用它 这个函数形式为 gradient(left, center, right)，返回速度在中心点的导数
+  else             //2 未定义自定义梯度
     foreach()
       foreach_dimension() {
 #if EMBED
@@ -285,8 +285,8 @@ void prediction()
 	  du.x[] = 0.;
 	else
 #endif
-	  du.x[] = (u.x[1] - u.x[-1])/(2.*Delta);
-    }
+	  du.x[] = (u.x[1] - u.x[-1])/(2.*Delta);  //用二阶中心差分：∂u∂x≈ui+1−ui−1/2Δ
+    }        //2
 
   trash ({uf});
   foreach_face() {
