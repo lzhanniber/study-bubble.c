@@ -83,12 +83,12 @@ of adaptive refinement (as well as an optional maximum runtime). */
 
 void bubble_position_setting (scalar f)//向本函数输入两个空的scalar数据，函数将其填充
 {
-    vertex scalar phi[];//先定义一个level-set函数
-    foreach_vertex() {//共32个气泡，对每一个单元格都针对32个气泡的levelset函数进行一次迭代，以确保其边角上的函数完整
+    vertex scalar phi[];//先定义一个level-set函数  （）
+    foreach_vertex() {//共32个气泡，对每一个单元格都针对32个气泡的levelset函数进行一次迭代，以确保其边角上的函数完整      
     phi[] = HUGE;
-        for (double xp = -21.8750 ; xp <= 21.8750; xp += 6.250)//此处i、j为气泡的圆心，每一次只更迭一个气泡
+        for (double xp = -21.8750 ; xp <= 21.8750; xp += 6.250)//此处i、j为气泡的圆心，每一次只更迭一个气泡     定义气泡初始圆心位置
             for (double yp = -24. ; yp <= -18.  ; yp += 2.)
-                phi[] = intersection (phi[], (sq(x - xp) + sq(y - yp) - sq(R0)));//将每一次结果都重复输入进phi[]中
+                phi[] = intersection (phi[], (sq(x - xp) + sq(y - yp) - sq(R0)));//将每一次结果都重复输入进phi[]中   点在气泡内部时 phi<0                                 
     //phi[] = -phi[];
     }//着重需要注意intersection()函数的插入机制比较奇怪，由于并没有单独列出经过调试猜测应该是在每一次遍历时取小值，是故必须将levelset函数先设置为气泡外部为正，气泡内部为负值，然后反向，否则会出现全部都取为负数的情况
     refine( phi[] < 0.5 && level <= LEVEL);
@@ -99,7 +99,7 @@ void bubble_position_setting (scalar f)//向本函数输入两个空的scalar数
 int main (int argc, char * argv[]) {
   maxruntime (&argc, argv);
   if (argc > 1)
-    LEVEL = atoi (argv[1]);
+    LEVEL = atoi (argv[1]);      
   
   /**
   We set the domain geometry and initial refinement. */
@@ -107,7 +107,7 @@ int main (int argc, char * argv[]) {
   size (WIDTH);
   origin (-L0/2, -L0/2);
   init_grid (128);
-  periodic(right);
+  periodic(right);       //将右边界设置为周期性边界
 
   /**
   We set the physical parameters: densities, viscosities and surface
@@ -137,7 +137,7 @@ of diameter unity. */
 
 event init (t = 0) {
   if (!restore (file = "restart")) {
-    bubble_position_setting(f);
+    bubble_position_setting(f);      //初始化32个气泡的位置
   }
 }
 
@@ -148,7 +148,7 @@ direction. */
 event acceleration (i++) {
   face vector av = a;
   foreach_face(y)
-    av.y[] -= 1.;
+    av.y[] -= 1.;        //施加重力
 }
 
 /**
@@ -158,15 +158,17 @@ velocity field. */
 event drop_remove (i++) {
   foreach(){
    if(f[]<1.0e-5)
-     f[]=0.0;
-  }
+     f[]=0.0;      
+  }      //在数值计算过程中，可能会在界面外产生一些极小的 f 值残留，该步的目的是清除那些极小的、无物理意义的气泡碎片或数值噪声
 }
 
 event adapt (i++) {
   foreach(){
   grad_u[] = f[]==0?0.000:u.x[];
-  grad_v[] = f[]==0?0.000:u.y[];
-}
+  grad_v[] = f[]==0?0.000:u.y[];    //如果这个单元不属于气泡区域（即 f = 0），那么把速度设为 0；否则，在气泡内或气泡附近保留真实速度。 
+ }                                   //在流体外部区域（比如纯液体区，f=0），速度场 u 可能会存在数值波动或扰动（特别是在自由边界或远场边界）。如果直接使用 u.x, u.y 去做 adapt_wavelet，
+                                    //程序会不断误判这些小扰动为“高梯度”，从而 在整个计算域过度加密网格
+                                    //使用上述代码，adapt_wavelet 只在气泡相关区域细化网格
 
 #if TREE
   f.prolongation = refine_bilinear;
@@ -175,12 +177,11 @@ event adapt (i++) {
 
   double femax = 2.0e-2;
   double uemax = 1.0e-2;
-  adapt_wavelet ({f,grad_u,grad_v}, (double[]){femax,uemax,uemax}, LEVEL, 5);
+  adapt_wavelet ({f,grad_u,grad_v}, (double[]){femax,uemax,uemax}, LEVEL, 5);   //在气泡界面和流动变化大的区域（即f>femax grad_u grad_v>uemax的区域）自动细化网格
 }
 
 /**
 ## Outputs
-
 Every ten timesteps, we output the time, volume, position, and
 velocity of the bubble. */
 event spectra (t = 15)
@@ -195,10 +196,10 @@ event spectra (t = 15)
      u_xa += u.x[];
      i += 1;
   }
-  }
-  
+  }                    
+   
   u_ya = u_ya/i;
-  u_xa = u_xa/i;//将区域内的y方向上的平均速度计算完成
+  u_xa = u_xa/i;//将区域内的y方向上的平均速度计算完成        //计算y<-5 >-10区域内的x y方向的平均速度
   static FILE * fp = fopen ("ouput", "w");
   foreach(){
   if (y >= -10. && y <= -5.0)
@@ -207,7 +208,7 @@ event spectra (t = 15)
      u_fx[] = u.x[] - u_xa;//计算区域内的速度振荡
      fprintf(fp,"%.8f %.8f %.8f %.8f\n", 
      			x,  y,  u_fy[], u_fx[]);
-     fflush(fp);
+     fflush(fp);                                        //计算并输出y<-5 >-10区域内的速度振荡（即实际速度与平均速度的差值）
   }
   }
   
@@ -216,7 +217,7 @@ event spectra (t = 15)
 //用于检测运行时间
 event logfile (i += 20) {
   fprintf (stderr,"%.8f\n",t);
-  fflush (stderr);
+  fflush (stderr);                  //每隔20个时间步打印当前的物理时间
 
 }
 
