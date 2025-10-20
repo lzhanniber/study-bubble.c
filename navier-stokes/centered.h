@@ -425,13 +425,13 @@ next timestep). Then compute the centered gradient field *g*. */
 
 event projection (i++,last)
 {
-  mgp = project (uf, p, alpha, dt, mgp.nrelax);
-  centered_gradient (p, g);
+  mgp = project (uf, p, alpha, dt, mgp.nrelax);  //实现压力投影法，求解压力泊松方程，修正面速度
+  centered_gradient (p, g);     //根据求得的压力场p，调用前面的 centered_gradient函数，计算单元中心的g：g=a−1ρ∇p
 
   /**
   We add the gradient field *g* to the centered velocity field. */
 
-  correction (dt);
+  correction (dt);   //调用之前定义的函数correction，把 g（即 a−∇p/ρ）乘以时间步长 Δt，加回到中心速度场 u
 }
 
 /**
