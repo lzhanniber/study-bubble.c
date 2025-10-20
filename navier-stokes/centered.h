@@ -386,7 +386,7 @@ event acceleration (i++,last)
 {
   trash ({uf});
   foreach_face()
-    uf.x[] = fm.x[]*(face_value (u.x, 0) + dt*a.x[]);
+    uf.x[] = fm.x[]*(face_value (u.x, 0) + dt*a.x[]);   //对于每个面，先把中心速度插值到该面，再加上加速度贡献 dt⋅a，并乘以面分数，得到预测的面速度 uf（用于后续的对流通量计算与压力投影）
 }
 
 /**
@@ -394,7 +394,7 @@ event acceleration (i++,last)
 
 This function constructs the centered pressure gradient and
 acceleration field *g* using the face-centered acceleration field *a*
-and the cell-centered pressure field *p*. */
+and the cell-centered pressure field *p*. */   //该函数使用面心加速度场 a 和单元中心压力场 p 构建中心压力梯度和加速度场 g。 即实现g=a−1/ρ∇p的离散形式
 
 void centered_gradient (scalar p, vector g)
 {
@@ -405,7 +405,7 @@ void centered_gradient (scalar p, vector g)
 
   face vector gf[];
   foreach_face()
-    gf.x[] = fm.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta;
+    gf.x[] = fm.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta;  //即gf​=af​−1/ρf​​（pi​−pi−1）/Δ​​
 
   /**
   We average these face values to obtain the centered, combined
