@@ -348,20 +348,20 @@ time $t+\Delta t$. */
 
 event viscous_term (i++,last)
 {
-  if (constant(mu.x) != 0.) {
-    correction (dt);
-    mgu = viscosity (u, mu, rho, dt, mgu.nrelax);
-    correction (-dt);
+  if (constant(mu.x) != 0.) {         //检查粘度是否为0，若黏度为 0，流动是无黏性的，就跳过
+    correction (dt);             //调用函数correction，将重力加速度加到速度场 上
+    mgu = viscosity (u, mu, rho, dt, mgu.nrelax);  //调用 Basilisk 内置函数 viscosity()，隐式求解黏性扩散项：∂u/∂t=1/ρ∇⋅(μ∇u)
+    correction (-dt);        //将之前加上的重力修正撤回，这样做到了只在黏性求解“临时”考虑了重力，但不改变速度的物理值
   }
 
   /**
   We reset the acceleration field (if it is not a constant). */
 
-  if (!is_constant(a.x)) {
-    face vector af = a;
-    trash ({af});
+  if (!is_constant(a.x)) {    //检查 a.x（x 方向的加速度分量）是否恒定
+    face vector af = a;  //创建一个 面向量 af，引用加速度向量 a
+    trash ({af});  //清理 缓存或临时数据。保证 af 的数据干净，不受之前时间步残留值影响
     foreach_face()
-      af.x[] = 0.;
+      af.x[] = 0.;  //把 x 方向的加速度 af.x[] 置为 0
   }
 }
 
