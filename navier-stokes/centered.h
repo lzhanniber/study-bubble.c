@@ -49,7 +49,7 @@ face vector uf[];
 /**
 In the case of variable density, the user will need to define both the
 face and centered specific volume fields ($\alpha$ and $\alpha_c$
-respectively) i.e. $1/\rho$. If not specified by the user, these
+respectively) i.e. $1/\rho$. If not specified by the user, these         
 fields are set to one i.e. the density is unity.
 
 Viscosity is set by defining the face dynamic viscosity $\mu$; default
@@ -82,14 +82,14 @@ balanced by the pressure gradient. Taking care of boundary orientation
 and staggering of $\mathbf{a}$, this can be written */
 
 #if EMBED
-# define neumann_pressure(i) (alpha.n[i] ? a.n[i]*fm.n[i]/alpha.n[i] :	//alpha.n[i]定义为比体积即1/ρ
+# define neumann_pressure(i) (alpha.n[i] ? a.n[i]*fm.n[i]/alpha.n[i] :	//alpha.n[i]定义为比体积即1/ρ alpha是面比体积场 alphac是中心比体积场
 			      a.n[i]*rho[]/(cm[] + SEPS))
 #else
-# define neumann_pressure(i) (a.n[i]*fm.n[i]/alpha.n[i])  //定义为∂p/∂n=a/alpha即ρa
+# define neumann_pressure(i) (a.n[i]*fm.n[i]/alpha.n[i])  //定义为∂p/∂n=a/alpha即∂p/∂n=ρa，通过设置压力梯度来抵消加速度，使边界法向速度保持零
 #endif
 
-p[right] = neumann (neumann_pressure(ghost));   //使用右边界的外侧面，即ghost面
-p[left]  = neumann (- neumann_pressure(0));    //使用左边界的内侧面，即网格内部面
+p[right] = neumann (neumann_pressure(ghost));   //使用右边界的外侧面，即ghost面，通过设置压力梯度来抵消加速度，使边界法向速度保持零
+p[left]  = neumann (- neumann_pressure(0));    //使用左边界的内侧面，即网格内部面，通过设置压力梯度来抵消加速度，使边界法向速度保持零
 
 #if AXI
 uf.n[bottom] = 0.;
@@ -184,7 +184,7 @@ event defaults (i = 0)
 
   foreach()
     foreach_dimension()
-      dimensional (u.x[] == Delta/t);    //设置网格大小
+      dimensional (u.x[] == Delta/t);    //设置速度场 u 的物理量纲等价于 长度/时间
 }
 
 
@@ -209,7 +209,7 @@ event init (i = 0)
   /**
   We update fluid properties. */
 
-  event ("properties");
+  event ("properties");   //执行event properties，更新流体特性
 
   /**
   We set the initial timestep (this is useful only when restoring from
@@ -226,10 +226,10 @@ The timestep for this iteration is controlled by the CFL condition,
 applied to the face centered velocity field $\mathbf{u}_f$; and the
 timing of upcoming events. */
 
-event set_dtmax (i++,last) dtmax = DT;
+event set_dtmax (i++,last) dtmax = DT;   //在每个时间步把 dtmax 设置为 预设的最大时间步 DT
 
 event stability (i++,last) {
-  dt = dtnext (stokes ? dtmax : timestep (uf, dtmax));  //设置时间步长dt
+  dt = dtnext (stokes ? dtmax : timestep (uf, dtmax));  //设置时间步长dt,若为Stokes 方程，直接使用最大时间步。 否则CFL 条件和面速度 uf 计算安全时间步
 }
 
 /**
@@ -250,7 +250,7 @@ $t+\Delta t/2$ -- can be defined by overloading this event. */
 event properties (i++,last);
 
 /**
-### Predicted face velocity field
+### Predicted face velocity field                //预测面速度场
 
 For second-order in time integration of the velocity advection term
 $\nabla\cdot(\mathbf{u}\otimes\mathbf{u})$, we need to define the face
@@ -259,24 +259,24 @@ of the Bell-Collela-Glaz [advection scheme](/src/bcg.h) and the
 pressure gradient and acceleration terms at time $t$ (stored in vector
 $\mathbf{g}$). */
 
-void prediction()
+void prediction()  
 {
   vector du;
   foreach_dimension() {
     scalar s = new scalar;
-    du.x = s;
+    du.x = s;       
   }
 
-  if (u.x.gradient)                 //1
+  if (u.x.gradient)                 //1 定义了自定义梯度
     foreach()
       foreach_dimension() {
 #if EMBED         
-        if (!fs.x[] || !fs.x[1]) //fs.x[] 表示当前面是否属于流体
+        if (!fs.x[] || !fs.x[1]) //fs.x[] 检查当前面是否属于流体，如果面上没有流体，梯度设为 0
 	  du.x[] = 0.;
 	else
 #endif
 	  du.x[] = u.x.gradient (u.x[-1], u.x[], u.x[1])/Delta;
-      }              //1 如果用户给了自定义梯度函数(u.x.gradient)，则使用它 这个函数形式为 gradient(left, center, right)，返回速度在中心点的导数
+      }              //1 自定义的梯度函数(u.x.gradient)， 函数形式为 gradient(left, center, right)，返回该单元 x 方向的速度梯度
   else             //2 未定义自定义梯度
     foreach()
       foreach_dimension() {
@@ -290,22 +290,22 @@ void prediction()
 
   trash ({uf});
   foreach_face() {             //计算面速度场uf
-    double un = dt*(u.x[] + u.x[-1])/(2.*Delta), s = sign(un);
+    double un = dt*(u.x[] + u.x[-1])/(2.*Delta), s = sign(un);   //计算当前面 x 方向的无量纲速度，s = sign(un)：上风方向，s = 1 → 正向流，i = -1，取左侧单元的速度。s = -1 → 反向流，i = 0，取有侧单元的速度
     int i = -(s + 1.)/2.;
-    uf.x[] = u.x[i] + (g.x[] + g.x[-1])*dt/4. + s*(1. - s*un)*du.x[i]*Delta/2.;
+    uf.x[] = u.x[i] + (g.x[] + g.x[-1])*dt/4. + s*(1. - s*un)*du.x[i]*Delta/2.;  //更新x 方向面速度
     #if dimension > 1
     if (fm.y[i,0] && fm.y[i,1]) {
       double fyy = u.y[i] < 0. ? u.x[i,1] - u.x[i] : u.x[i] - u.x[i,-1];
-      uf.x[] -= dt*u.y[i]*fyy/(2.*Delta);
+      uf.x[] -= dt*u.y[i]*fyy/(2.*Delta);          //y 方向对 x 方向速度的对流修正
     }
     #endif
     #if dimension > 2
     if (fm.z[i,0,0] && fm.z[i,0,1]) {
       double fzz = u.z[i] < 0. ? u.x[i,0,1] - u.x[i] : u.x[i] - u.x[i,0,-1];
-      uf.x[] -= dt*u.z[i]*fzz/(2.*Delta);
+      uf.x[] -= dt*u.z[i]*fzz/(2.*Delta);             //计算 z 方向对 x 方向速度的修正
     }
     #endif
-    uf.x[] *= fm.x[];
+    uf.x[] *= fm.x[];         //按流体比例缩放速度
   }
 
   delete ((scalar *){du});
@@ -324,22 +324,19 @@ event advection_term (i++,last)      //对流项计算
 {
   if (!stokes) {                    //若为斯托克斯流，跳过计算对流项
     prediction();                   //中间速度预测
-    mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);    //半步压力投影
-    advection ((scalar *){u}, uf, dt, (scalar *){g});      //显式推进对流项,更新速度场
-  }
-}
-
+    mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);    //半步压力投影 解如下方程：∇⋅(1/ρ∇p)=∇⋅uf/Δt，修正 uf 使其无散度，并更新压力修正场 pf
+    advection ((scalar *){u}, uf, dt, (scalar *){g});      //执行真正的速度对流项更新，即离散化：∂u/∂t+∇⋅(u⊗u)=g，显式推进对流项un+1=un−Δt∇⋅(uf​u)+Δtg​,根据面速度计算单元速度变化
 /**
 ### Viscous term
 
 We first define a function which adds the pressure gradient and
 acceleration terms. */
 
-static void correction (double dt)
+static void correction (double dt)    //粘性项  static 定义为静态函数，只在当前源文件中可见
 {
   foreach()
     foreach_dimension()
-      u.x[] += dt*g.x[];
+      u.x[] += dt*g.x[];   //在当前时间步 dt 内，给速度场 u 添加重力加速度的影响
 }
 
 /**
