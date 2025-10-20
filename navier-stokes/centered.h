@@ -414,7 +414,8 @@ void centered_gradient (scalar p, vector g)
   trash ({g});
   foreach()
     foreach_dimension()
-      g.x[] = (gf.x[] + gf.x[1])/(fm.x[] + fm.x[1] + SEPS);
+      g.x[] = (gf.x[] + gf.x[1])/(fm.x[] + fm.x[1] + SEPS);   //对左右面取平均：gc=(gf,L+gf,R)/2   得到单元中心的：gx=(gf,i−1/2+gf,i+1/2)/(fm,i−1/2+fm,i+1/2+SEPS)
+
 }
 
 /**
