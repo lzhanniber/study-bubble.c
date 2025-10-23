@@ -1,0 +1,154 @@
+events (i = 0, t = 0)
+  defaults                  src/iforce.h:30
+  defaults                  src/two-phase-generic.h:10
+  defaults                  src/vof.h:127
+  defaults                  src/vof.h:107
+  defaults                  src/navier-stokes/centered.h:126
+  defaults                  src/run.h:42
+  default_display           src/navier-stokes/centered.h:194
+  init                      bubble.c:130
+  init                      src/navier-stokes/centered.h:203
+  properties                src/two-phase-generic.h:83
+  properties                src/navier-stokes/centered.h:250
+  stability                 src/tension.h:36
+  stability                 src/vof.h:140
+  stability                 src/navier-stokes/centered.h:231
+  perfs                     src/navier-stokes/perfs.h:7
+  runtime                   src/maxruntime.h:20
+  logfile                   bubble.c:162
+0.00000000 0.78450755 0.00000000 3.50000000 0.00000000 0.00000000 0.00000000 0.00000000
+  set_dtmax                 src/navier-stokes/centered.h:229
+  stability                 src/tension.h:36
+  stability                 src/vof.h:140
+  stability                 src/navier-stokes/centered.h:231
+  vof                       src/vof.h:380
+  vof                       src/navier-stokes/centered.h:241
+  tracer_advection          src/two-phase-generic.h:50
+  tracer_advection          src/navier-stokes/centered.h:242
+  tracer_diffusion          src/navier-stokes/centered.h:243
+  properties                src/two-phase-generic.h:83
+  properties                src/navier-stokes/centered.h:250
+  advection_term            src/navier-stokes/centered.h:323
+  viscous_term              src/navier-stokes/centered.h:352
+  acceleration              bubble.c:141
+  acceleration              src/tension.h:72
+  acceleration              src/iforce.h:45
+  acceleration              src/navier-stokes/centered.h:388
+  projection                src/navier-stokes/centered.h:428
+  end_timestep              src/navier-stokes/centered.h:443
+  adapt                     bubble.c:151
+  adapt                     src/navier-stokes/centered.h:453
+  properties                src/two-phase-generic.h:83
+  properties                src/navier-stokes/centered.h:250
+
+events (i = 1, t = 0.000575395)
+  perfs                     src/navier-stokes/perfs.h:7
+  set_dtmax                 src/navier-stokes/centered.h:229
+  stability                 src/tension.h:36
+  stability                 src/vof.h:140
+  stability                 src/navier-stokes/centered.h:231
+  vof                       src/vof.h:380
+  vof                       src/navier-stokes/centered.h:241
+  tracer_advection          src/two-phase-generic.h:50
+  tracer_advection          src/navier-stokes/centered.h:242
+  tracer_diffusion          src/navier-stokes/centered.h:243
+  properties                src/two-phase-generic.h:83
+  properties                src/navier-stokes/centered.h:250
+  advection_term            src/navier-stokes/centered.h:323
+  viscous_term              src/navier-stokes/centered.h:352
+  acceleration              bubble.c:141
+  acceleration              src/tension.h:72
+  acceleration              src/iforce.h:45
+  acceleration              src/navier-stokes/centered.h:388
+  projection                src/navier-stokes/centered.h:428
+  end_timestep              src/navier-stokes/centered.h:443
+  adapt                     bubble.c:151
+  adapt                     src/navier-stokes/centered.h:453
+  properties                src/two-phase-generic.h:83
+  properties                src/navier-stokes/centered.h:250
+
+events (i = 2, t = 0.00167366)
+  perfs                     src/navier-stokes/perfs.h:7
+  set_dtmax                 src/navier-stokes/centered.h:229
+  stability                 src/tension.h:36
+  stability                 src/vof.h:140
+  stability                 src/navier-stokes/centered.h:231
+  vof                       src/vof.h:380
+  vof                       src/navier-stokes/centered.h:241
+  tracer_advection          src/two-phase-generic.h:50
+  tracer_advection          src/navier-stokes/centered.h:242
+  tracer_diffusion          src/navier-stokes/centered.h:243
+  properties                src/two-phase-generic.h:83
+  properties                src/navier-stokes/centered.h:250
+  advection_term            src/navier-stokes/centered.h:323
+  viscous_term              src/navier-stokes/centered.h:352
+  acceleration              bubble.c:141
+  acceleration              src/tension.h:72
+  acceleration              src/iforce.h:45
+  acceleration              src/navier-stokes/centered.h:388
+  projection                src/navier-stokes/centered.h:428
+  end_timestep              src/navier-stokes/centered.h:443
+  adapt                     bubble.c:151
+  adapt                     src/navier-stokes/centered.h:453
+  properties                src/two-phase-generic.h:83
+  properties                src/navier-stokes/centered.h:250
+
+  
+iforce.h:30
+
+event defaults (i = 0) {  
+  if (is_constant(a.x)) {
+    a = new face vector;
+    foreach_face() {
+      a.x[] = 0.;                  //将所有面上的加速度初始值设为 0
+      dimensional (a.x[] == Delta/sq(DT));     //维度说明，声明a 的单位是加速度（L/T²）      
+    }
+  }   //中心纳维-斯托克斯求解器速度演化方程右侧的一个源项，即加速度。我们会分配一个新的矢量场来存储它
+}
+
+two-phase-generic.h:10
+
+event defaults (i = 0)
+{
+  alpha = alphav;   
+  rho = rhov;      //定义密度、比体积α=1/ρ
+
+  /**
+  If the viscosity is non-zero, we need to allocate the face-centered
+  viscosity field. */
+  
+  if (mu1 || mu2)
+    mu = new face vector;    //如果流体1 或 流体2 的粘度不为零，就定义一个粘度场  face vector面向量 mu定义在网格面上
+
+  /**
+  We add the interface to the default display. */
+
+  display ("draw_vof (c = 'f');");    //将体积分数场 f（即 VOF 界面）添加到默认显示中
+}
+
+vof.h:127
+event defaults (i = 0)
+{
+  for (scalar c in interfaces) {           //interfaces 是一个 scalar 列表，里面包含所有 VOF 界面变量   c为界面的体积分数场
+    scalar * tracers = c.tracers;           //每个界面变量如 c都可以附带一个“tracer 列表”，c.tracers 是一个指针，指向所有 属于该界面 的 tracer（如tracer可能包括温度、浓度）
+    for (scalar t in tracers)                //t 表示“界面一侧的体积加权浓度场” “有效浓度”，只在一侧流体内有意义
+      t.depends = list_add (t.depends, c);  //t.depends 表示 tracer t 依赖于哪些变量 list_add (t.depends, c)把界面变量 c（例如 f）加入到 tracer t 的依赖项中，即告诉 Basilisk：tracer t 依赖于界面 f
+  }
+}
+
+vof.h:107
+event defaults (i = 0)
+{
+  for (scalar c in interfaces) {
+    c.refine = c.prolongation = fraction_refine;
+    c.dirty = true;
+    scalar * tracers = c.tracers;
+    for (scalar t in tracers) {
+      t.restriction = restriction_volume_average;
+      t.refine = t.prolongation = vof_concentration_refine;
+      t.dirty = true;
+      t.c = c;
+    }
+  }
+}
+#endif // TREE
