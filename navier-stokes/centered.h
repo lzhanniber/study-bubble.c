@@ -184,7 +184,7 @@ event defaults (i = 0)
 
   foreach()
     foreach_dimension()
-      dimensional (u.x[] == Delta/t);    //设置速度场 u 的物理量纲等价于 长度/时间
+      dimensional (u.x[] == Delta/t);    
 }
 
 
