@@ -140,7 +140,7 @@ vof.h:107
 event defaults (i = 0)
 {
   for (scalar c in interfaces) {
-    c.refine = c.prolongation = fraction_refine;
+    c.refine = c.prolongation = fraction_refine;     //自适应网格细化（refine）   prolongation在多重网格求解或插值时，粗网格传播值到细网格
     c.dirty = true;
     scalar * tracers = c.tracers;
     for (scalar t in tracers) {
