@@ -1,22 +1,445 @@
-  vof_advection (interfaces, i);  //对应于相变文章3数值方法部分，使用分裂输运法对该方程进行离散，把二维/三维输运问题分裂为多个一维守恒对流问题；每个方向单独求解
+events (i = 0, t = 0)
+defaults                  src/iforce.h:30
+defaults                  src/two-phase-generic.h:10
+defaults                  src/vof.h:127
+defaults                  src/vof.h:107
+defaults                  src/navier-stokes/centered.h:126
+defaults                  src/run.h:42
+default_display           src/navier-stokes/centered.h:194
+init                      bubble.c:130
+init                      src/navier-stokes/centered.h:203
+properties                src/two-phase-generic.h:83
+properties                src/navier-stokes/centered.h:250
+stability                 src/tension.h:36
+stability                 src/vof.h:140
+stability                 src/navier-stokes/centered.h:231
+perfs                     src/navier-stokes/perfs.h:7
+runtime                   src/maxruntime.h:20
+logfile                   bubble.c:162
+0.00000000 0.78450755 0.00000000 3.50000000 0.00000000 0.00000000 0.00000000 0.00000000
+set_dtmax                 src/navier-stokes/centered.h:229
+stability                 src/tension.h:36
+stability                 src/vof.h:140
+stability                 src/navier-stokes/centered.h:231
+vof                       src/vof.h:380
+vof                       src/navier-stokes/centered.h:241
+tracer_advection          src/two-phase-generic.h:50
+tracer_advection          src/navier-stokes/centered.h:242
+tracer_diffusion          src/navier-stokes/centered.h:243
+properties                src/two-phase-generic.h:83
+properties                src/navier-stokes/centered.h:250
+advection_term            src/navier-stokes/centered.h:323
+viscous_term              src/navier-stokes/centered.h:352
+acceleration              bubble.c:141
+acceleration              src/tension.h:72
+acceleration              src/iforce.h:45
+acceleration              src/navier-stokes/centered.h:388
+projection                src/navier-stokes/centered.h:428
+end_timestep              src/navier-stokes/centered.h:443
+adapt                     bubble.c:151
+adapt                     src/navier-stokes/centered.h:453
+properties                src/two-phase-generic.h:83
+properties                src/navier-stokes/centered.h:250
+
+events (i = 1, t = 0.000575395)
+perfs                     src/navier-stokes/perfs.h:7	
+set_dtmax                 src/navier-stokes/centered.h:229
+stability                 src/tension.h:36
+stability                 src/vof.h:140
+stability                 src/navier-stokes/centered.h:231
+vof                       src/vof.h:380
+vof                       src/navier-stokes/centered.h:241
+tracer_advection          src/two-phase-generic.h:50
+tracer_advection          src/navier-stokes/centered.h:242
+tracer_diffusion          src/navier-stokes/centered.h:243
+properties                src/two-phase-generic.h:83
+properties                src/navier-stokes/centered.h:250
+advection_term            src/navier-stokes/centered.h:323
+viscous_term              src/navier-stokes/centered.h:352
+acceleration              bubble.c:141
+acceleration              src/tension.h:72
+acceleration              src/iforce.h:45
+acceleration              src/navier-stokes/centered.h:388
+projection                src/navier-stokes/centered.h:428
+end_timestep              src/navier-stokes/centered.h:443
+adapt                     bubble.c:151
+adapt                     src/navier-stokes/centered.h:453
+properties                src/two-phase-generic.h:83
+properties                src/navier-stokes/centered.h:250
 
 
+events (i = 2, t = 0.00167366)
+perfs                     src/navier-stokes/perfs.h:7
+set_dtmax                 src/navier-stokes/centered.h:229
+stability                 src/tension.h:36
+stability                 src/vof.h:140
+stability                 src/navier-stokes/centered.h:231
+vof                       src/vof.h:380
+vof                       src/navier-stokes/centered.h:241
+tracer_advection          src/two-phase-generic.h:50
+tracer_advection          src/navier-stokes/centered.h:242
+tracer_diffusion          src/navier-stokes/centered.h:243
+properties                src/two-phase-generic.h:83
+properties                src/navier-stokes/centered.h:250
+advection_term            src/navier-stokes/centered.h:323
+viscous_term              src/navier-stokes/centered.h:352
+acceleration              bubble.c:141
+acceleration              src/tension.h:72
+acceleration              src/iforce.h:45
+acceleration              src/navier-stokes/centered.h:388
+projection                src/navier-stokes/centered.h:428
+end_timestep              src/navier-stokes/centered.h:443
+adapt                     bubble.c:151
+adapt                     src/navier-stokes/centered.h:453
+properties                src/two-phase-generic.h:83
+properties                src/navier-stokes/centered.h:250
 
+iforce.h:30
+
+event defaults (i = 0) {  
+    if (is_constant(a.x)) {
+    a = new face vector;
+    foreach_face() {
+      a.x[] = 0.;                  //将所有面上的加速度初始值设为 0
+      dimensional (a.x[] == Delta/sq(DT));     //维度说明，声明a 的单位是加速度（L/T²）      
+    }
+  }   //中心纳维-斯托克斯求解器速度演化方程右侧的一个源项，即加速度。我们会分配一个新的矢量场来存储它
+}
+
+two-phase-generic.h:10
+
+event defaults (i = 0)
+{
+  alpha = alphav;   
+  rho = rhov;      //定义密度、比体积α=1/ρ
+  /**
+  If the viscosity is non-zero, we need to allocate the face-centeredviscosity field. */
+  if (mu1 || mu2)
+    mu = new face vector;    //如果流体1 或 流体2 的粘度不为零，就定义一个粘度场  face vector面向量 mu定义在网格面上
+  display ("draw_vof (c = 'f');");    //将体积分数场 f（即 VOF 界面）添加到默认显示中
+}
+
+vof.h：127
+
+event defaults (i = 0)
+{
+  for (scalar c in interfaces) {   //interfaces 是一个 scalar 列表，里面包含所有 VOF 界面变量   c为界面的体积分数场
+    scalar * tracers = c.tracers;  //每个界面变量如 c都可以附带一个“tracer 列表”，c.tracers 是一个指针，指向所有 属于该界面 的 tracer（如tracer可能包括温度、浓度）（c表示界面变量，即用c可以定义一个界面，相当于体积分数？）
+    for (scalar t in tracers)    //t 表示“界面一侧的体积加权浓度场” “有效浓度”，只在一侧流体内有意义
+      t.depends = list_add (t.depends, c);   //t.depends 表示 tracer t 依赖于哪些变量 list_add (t.depends, c)把界面变量 c（例如 f）加入到 tracer t 的依赖项中，即告诉 Basilisk：tracer t 依赖于界面 f
+  }
+}
+
+vof.h:107
+
+event defaults (i = 0)
+{
+  for (scalar c in interfaces) {
+    c.refine = c.prolongation = fraction_refine;     //自适应网格细化（refine）   prolongation在多重网格求解或插值时，粗网格传播值到细网格
+    c.dirty = true;            //标记 c 的值需要更新或重新计算
+    scalar * tracers = c.tracers;   //指向用c定义的界面的tracer
+    for (scalar t in tracers) {
+      t.restriction = restriction_volume_average;
+      t.refine = t.prolongation = vof_concentration_refine;
+      t.dirty = true;
+      t.c = c;
+    }
+  }
+}
+#endif // TREE
+
+centered.h:126
+
+event defaults (i = 0)
+{
+
+  /**
+  We reset the multigrid parameters to their default values. */
+  
+  mgp = (mgstats){0};
+  mgpf = (mgstats){0};   ////将多重网格参数重置为默认值
+  mgu = (mgstats){0};  
+  
+  CFL = 0.8;
+
+  /**
+  The pressures are never dumped. */
+
+  p.nodump = pf.nodump = true;    //在保存或重启计算时，不将压力场 p 和面心压力场 pf 写入文件，因为它们是中间计算量，不需要存储。
+  
+  /**
+  The default density field is set to unity (times the metric and the
+  solid factors). */
+
+  if (alpha.x.i == unityf.x.i) {    // 默认单相流、均匀密度流体
+    alpha = fm;
+    rho = cm;
+  }
+  else if (!is_constant(alpha.x)) {   //如果 α（比体积）不是常数（即流体密度随空间变化），则我们需要更新它，使它在边界或截断面上乘以局部面系数 fm.x[]
+    face vector alphav = alpha;
+    foreach_face()
+      alphav.x[] = fm.x[];
+  }
+
+  /**
+  On trees, refinement of the face-centered velocity field needs to
+  preserve the divergence-free condition. */
+
+#if TREE
+  uf.x.refine = refine_face_solenoidal;        //在树形结构上，对面中心速度场的细化需要保持无散条件
+
+  /**
+  When using [embedded boundaries](/src/embed.h), the restriction and
+  prolongation operators need to take the boundary into account. */   //在使用嵌入式边界时，限制和延拓算子需要考虑边界
+
+#if EMBED
+  uf.x.refine = refine_face;
+  foreach_dimension()
+    uf.x.prolongation = refine_embed_face_x;
+  for (scalar s in {p, pf, u, g}) {
+    s.restriction = restriction_embed_linear;
+    s.refine = s.prolongation = refine_embed_linear;
+    s.depends = list_add (s.depends, cs);
+  }
+  for (scalar s in {p, pf})
+    s.embed_gradient = pressure_embed_gradient;
+#endif // EMBED
+#endif // TREE
+
+  /**
+  We set the dimensions of the velocity field. */     //设置速度场的维度
+
+  foreach()
+    foreach_dimension()
+      dimensional (u.x[] == Delta/t);
+}
+
+run.h:42
+
+event defaults (i = 0) {
+  display ("box();");  //在bview时绘制一个边界框
+}
+
+centered.h:194
+
+event default_display (i = 0)
+  display ("squares (color = 'u.x', spread = -1);");  //bview 绘图命令字符串, squares: 绘制方格图 color = 'u.x':用颜色显示速度分量 u.x spread = -1:平滑或插值参数（-1 表示启用基于父网格的平滑显示）
+
+bubble.c：130
+
+event init (t = 0) {
+  if (!restore (file = "restart")) {
+    refine (sq(x) + sq(y - Zi) + sq(z) - sq(0.75) < 0 && level < LEVEL);   //在气泡区域细化网格，使该区域的分辨率更高
+    fraction (f, sq(x) + sq(y - Zi) + sq(z) - sq(.5));                     //根据给定的标量场φ(x) 定义体积分数函数 f,初始化两相流中界面的位置:若 φ < 0，则 f = 0（气泡内部）φ > 0，则 f = 1（外部流体）
+  }
+
+centered.h:203
+
+event init (i = 0)
+{
+  trash ({uf});  //跟踪uf
+  foreach_face()
+    uf.x[] = fm.x[]*face_value (u.x, 0);   //u 中心速度 uf 面速度 把单元中心速度 u 插值到面
+  /**
+  We update fluid properties. */
+
+  event ("properties");    //执行event properties，更新流体特性
+
+  /**
+  We set the initial timestep (this is useful only when restoring from
+  a previous run). */   //设置初始时间步长
+
+  dtmax = DT;    
+  event ("stability");
+}
+
+two-phase-generic.h:83
+
+event properties (i++)
+{
+  foreach_face() {
+    double ff = (sf[] + sf[-1])/2.;  //计算两个相邻单元的平均体积分数  sf[]：体积分数（volume fraction）
+    alphav.x[] = fm.x[]/rho(ff);   //alphav 是无量纲化动量方程中的 系数 α = 1/ρ    计算每个面的 1/ρ，并乘以该面被流体占据的比例 fm.x[]，以得到正确的加权结果
+    if (mu1 || mu2) {   //如果两相的黏度不为零，则计算每个面的面心黏度 μv.x[]
+      face vector muv = mu;   
+      muv.x[] = fm.x[]*mu(ff);
+    }
+  }
+  
+  foreach()
+    rhov[] = cm[]*rho(sf[]);   //计算每个单元中“流体部分”的有效密度
+
+#if TREE
+  sf.prolongation = fraction_refine;     //告诉 Basilisk 在网格细化时，如何插值体积分数 sf
+  sf.dirty = true; // boundary conditions need to be updated
+#endif
+}
+
+centered.h:250
+event properties (i++,last); //调用event properties
+
+tension.h:36
+
+event stability (i++)
+{
+
+  /**
+  We first compute the minimum and maximum values of $\alpha/f_m =
+  1/\rho$, as well as $\Delta_{min}$. */   //首先计算 α/fm=1/ρ 的最小值和最大值，以及 Δmin
+
+  double amin = HUGE, amax = -HUGE, dmin = HUGE;
+  foreach_face (reduction(min:amin) reduction(max:amax) reduction(min:dmin))
+    if (fm.x[] > 0.) {    //只考虑 fm.x[] > 0 的面（即处于流体内部的面）
+      if (alpha.x[]/fm.x[] > amax) amax = alpha.x[]/fm.x[];
+      if (alpha.x[]/fm.x[] < amin) amin = alpha.x[]/fm.x[];
+      if (Delta < dmin) dmin = Delta;
+    }
+  double rhom = (1./amin + 1./amax)/2.;   //计算平均密度
+
+  /**
+  The maximum timestep is set using the sum of surface tension
+  coefficients. */    //最大时间步长通过表面张力系数之和来设置
+
+  double sigma = 0.;
+  for (scalar c in interfaces)
+    sigma += c.sigma;
+  if (sigma) {
+    double dt = sqrt (rhom*cube(dmin)/(pi*sigma));  //根据表面张力时间步稳定条件：Δt≤sqrt(ρm Δmin⁡3/(π σ)​)计算表面张力稳定条件对应的时间步
+    if (dt < dtmax)
+      dtmax = dt;
+  }
+}
+
+vof.h:140
+
+event stability (i++) {
+  if (CFL > 0.5)
+    CFL = 0.5;    //确保 CFL 小于 0.5
+}
+
+centered.h:231
+
+event stability (i++,last) {
+  dt = dtnext (stokes ? dtmax : timestep (uf, dtmax));  //设置时间步长dt,若为Stokes 方程，直接使用最大时间步。 否则根据CFL 条件和面速度 uf 计算安全时间步
+}
+
+perfs.h:7
+
+event perfs (i += 1) {          //自动将当前时间步的 时间、步长、MG（多重网格）迭代信息、网格规模、性能指标等 写入文件 perfs
+  static FILE * fp = fopen ("perfs", "w");
+  if (i == 0)
+    fprintf (fp,  "t dt mgp.i mgp.nrelax mgpf.i mgpf.nrelax mgu.i mgu.nrelax "
+	     "grid->tn perf.t perf.speed npe perf.ispeed\n");
+  static double start = 0.;
+  if (i > 10 && perf.t - start < 1.) return 0;           //当运行时间 perf.t 比上次输出超过 1 秒时，才会写入一次。前 10 步不写入（跳过初始阶段，因为初始化可能性能不稳定）
+  fprintf (fp, "%g %g %d %d %d %d %d %d %ld %g %g %d %g\n", 
+	   t, dt, mgp.i, mgp.nrelax, mgpf.i, mgpf.nrelax, mgu.i, mgu.nrelax,
+	   grid->tn, perf.t, perf.speed, npe(), perf.ispeed);
+  fflush (fp);
+  start = perf.t;     //更新 start，记录本次写入的时间
+}
+
+maxruntime.h:20
+
+event runtime (i += 10) {       //在并行计算中定期检测运行时长，当距离最大运行时间不足 5 分钟时，自动保存重启文件并安全退出程序，防止任务超时被系统强制终止。
+  mpi_all_reduce (perf.t, MPI_DOUBLE, MPI_MAX);
+  if (perf.t >= _maxruntime - 300) { // we allow 5 minutes for termination
+    dump (file = "restart"); // so that we can restart
+    return 1; // exit
+  }
+}
+
+bubble.c:162
+
+event logfile (i += 10) {
+  double xb = 0., yb = 0., zb = 0., sb = 0.;
+  double vbx = 0., vby = 0., vbz = 0.;
+  foreach(reduction(+:xb) reduction(+:yb) reduction(+:zb)
+	  reduction(+:vbx) reduction(+:vby) reduction(+:vbz)
+	  reduction(+:sb)) {               //计算气泡位置（质心坐标）、体积、速度
+    double dv = (1. - f[])*dv();     
+    xb += x*dv;
+    yb += y*dv;
+    zb += z*dv;
+    vbx += u.x[]*dv;
+    vby += u.y[]*dv;
+    vbz += u.z[]*dv;
+    sb += dv; 
+  }
+
+  fprintf (stderr,
+	   "%.8f %.8f %.8f %.8f %.8f %.8f %.8f %.8f\n", 
+	   t, sb,
+	   xb/sb, yb/sb, zb/sb,
+	   vbx/sb, vby/sb, vbz/sb);
+  fflush (stderr);
+}
+
+centered.h:229
+
+event set_dtmax (i++,last) dtmax = DT;   //强制设定最大时间步长 dtmax = DT
+
+tension.h:36   //第二次执行
+
+event stability (i++)
+{
+
+  /**
+  We first compute the minimum and maximum values of $\alpha/f_m =
+  1/\rho$, as well as $\Delta_{min}$. */   //首先计算 α/fm=1/ρ 的最小值和最大值，以及 Δmin
+
+  double amin = HUGE, amax = -HUGE, dmin = HUGE;
+  foreach_face (reduction(min:amin) reduction(max:amax) reduction(min:dmin))
+    if (fm.x[] > 0.) {    //只考虑 fm.x[] > 0 的面（即处于流体内部的面）
+      if (alpha.x[]/fm.x[] > amax) amax = alpha.x[]/fm.x[];
+      if (alpha.x[]/fm.x[] < amin) amin = alpha.x[]/fm.x[];
+      if (Delta < dmin) dmin = Delta;
+    }
+  double rhom = (1./amin + 1./amax)/2.;   //计算平均密度
+
+  /**
+  The maximum timestep is set using the sum of surface tension
+  coefficients. */    //最大时间步长通过表面张力系数之和来设置
+
+  double sigma = 0.;
+  for (scalar c in interfaces)
+    sigma += c.sigma;
+  if (sigma) {
+    double dt = sqrt (rhom*cube(dmin)/(pi*sigma));  //根据表面张力时间步稳定条件：Δt≤sqrt(ρm Δmin⁡3/(π σ)​)计算表面张力稳定条件对应的时间步
+    if (dt < dtmax)
+      dtmax = dt;
+  }
+}
+
+vof.h:140    //第二次执行
+
+event stability (i++) {
+  if (CFL > 0.5)
+    CFL = 0.5;    //确保 CFL 小于 0.5
+}
+
+centered.h:231    //第二次执行
+
+event stability (i++,last) {
+  dt = dtnext (stokes ? dtmax : timestep (uf, dtmax));  //设置时间步长dt,若为Stokes 方程，直接使用最大时间步。 否则根据CFL 条件和面速度 uf 计算安全时间步
+}
+
+vof.h:380
+
+event vof (i++)
+  vof_advection (interfaces, i); // 对应于相变文章3数值方法部分，使用分裂输运法对该方程进行离散，把二维/三维输运问题分裂为多个一维守恒对流问题；每个方向单独求解
 
 centered.h:241
-event vof (i++,last);    //调用event vof
-
-
-
+event vof (i++,last); //调用event vof
 
 two-phase-generic.h:50
+
 event tracer_advection (i++)
 {
-//When using smearing of the density jump, we initialise sf with the vertex-average of f. //在一些两相流模拟中，为了避免由于密度或粘度跳跃（discontinuous jump）导致的数值震荡
-//我们不直接使用 f（体积分数），而是构造一个平滑的版本 sf
-
-
-
+  
+  /**
+  When using smearing of the density jump, we initialise *sf* with the    //在一些两相流模拟中，为了避免由于密度或粘度跳跃（discontinuous jump）导致的数值震荡
+  vertex-average of *f*. */     //我们不直接使用 f（体积分数），而是构造一个平滑的版本 sf
 
 #ifndef sf
 #if dimension <= 2
@@ -36,44 +459,20 @@ event tracer_advection (i++)
 #endif
 #endif // !sf
 
-
-
-
 #if TREE
-  sf.prolongation = refine_bilinear;
-  sf.dirty = true; // boundary conditions need to be updated
+  sf.prolongation = refine_bilinear;   //指定 sf 在网格加密时使用双线性插值（平滑过渡)
+  sf.dirty = true; // boundary conditions need to be updated  //标记sf的边界条件需要更新。 通过以上两步确保在 AMR 细化/粗化时，平滑场 sf 的插值保持连续、无跳变。
 #endif
 }
 
-
-
-
 centered.h:242
-
-
-
-
 event tracer_advection (i++,last);  //调用event tracer_advection
 
-
-
-
 centered.h:243
-
-
-
-
 event tracer_diffusion (i++,last);   //调用event tracer_diffusion 这个事件定义在henry.h中  在每个时间步中，对伴随体积分数 f 的示踪场（如浓度、温度等）求解扩散方程
 
-
-
-
-two-phase-generic.h:83 
-
-
-
-
-event properties (i++)    //第二次调用event properties   根据平滑后的体积分数sf计算每个单元中的密度
+two-phase-generic.h:83
+event properties (i++)  // 第二次调用event properties   根据平滑后的体积分数sf计算每个单元中的密度
 {
   foreach_face() {
     double ff = (sf[] + sf[-1])/2.;
@@ -87,38 +486,21 @@ event properties (i++)    //第二次调用event properties   根据平滑后的
   foreach()
     rhov[] = cm[]*rho(sf[]);
 
-
-
-
 #if TREE
   sf.prolongation = fraction_refine;
-  sf.dirty = true; 边界条件需要更新
+  sf.dirty = true; // boundary conditions need to be updated
 #endif
 }
 
-
-
-
 centered.h:250
-
-
-
-
-事件属性 (i++,last)；第二次调用 在 centered.h 中执行事件属性
-
-
-
+event properties (i++,last); //在centered.h中执行event properties 确保在执行后面的event时已通过event properties计算了密度
 
 centered.h:323
-
-
-
-
-事件 advection_term (i++,last)
+event advection_term (i++,last)
 {
-如果 (!stokes) {
+  if (!stokes) {
     prediction();
     mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);
     advection ((scalar *){u}, uf, dt, (scalar *){g});
-}
+  }
 }
