@@ -667,6 +667,461 @@ event projection (i++,last)
 }
 
 centered.h:443
-event end_timestep (i++, last);
+event end_timestep (i++, last);  //在 时间步结束（end_timestep）阶段 通过曲率项 κ对界面处的表面张力贡献引起的压力跳跃效应进行修正
+event end_timestep (i++) //定义在compressible/tension.h
+{
+  if (f.sigma > 0.) {
+    scalar skappa[];
+    curvature (f, skappa, f.sigma);    //计算界面曲率 κ
+
+    // Here we just introduce the correction due to the surface tension contribution to the pressure jump.//仅介绍表面张力对压力跳跃的贡献引起的修正
+
+    face vector upf[];
+    for (scalar fE in {fE1, fE2}) {  //要修正的标量 fE ,fE表示两个与界面有关的“能量”或“浓度”场
+      foreach_face() {
+	double fr = f[1], fl = f[];
+	if (!fE.inverse)
+	  fr = 1. - fr, fl = 1. - fl;
+	if (fr + fl > 0. && fr + fl < 2.) {
+	  if (fr > fl)
+	    upf.x[] = uf.x[]*fl*skappa[];
+	  else
+	    upf.x[] = uf.x[]*fr*skappa[1];
+	}
+	else
+	  upf.x[] = 0.;
+      }           //构造表面张力修正通量
+
+      foreach() {
+	double div = 0.;
+	foreach_dimension()
+	  div += upf.x[1] - upf.x[];
+	fE[] -= (fE.inverse ? 1. - f[] : f[])*div/Delta*dt/cm[];       //修正每个单元的能量或浓度，使其包含界面处表面张力引起的压力跳跃贡献
+      }
+    }
+  }
+}
+
+bubble.c:151
+event adapt (i++) {
+  double uemax = 1e-2;
+  adapt_wavelet ({f,u}, (double[]){0.01,uemax,uemax,uemax}, LEVEL, 5);   //体积分数和速度场的变化来判断是否细化网格
+}
 
 centered.h:453
+event adapt (i++,last) {
+#if EMBED         //在每个时间步结束时，清理嵌入边界（solid geometry）的体积分数与速度通量信息
+  fractions_cleanup (cs, fs);       //清理由于网格细化/粗化或浮点误差导致的非法体积分数
+  foreach_face()
+    if (uf.x[] && !fs.x[])
+      uf.x[] = 0.; 			//确保在固体边界上，速度为零
+#endif
+  event ("properties");  //调用 properties 事件重新计算流体物性
+}
+#endif
+
+two-phase-generic.h:83
+event properties (i++)
+{
+  foreach_face() {
+    double ff = (sf[] + sf[-1])/2.;  //计算两个相邻单元的平均体积分数  sf[]：体积分数（volume fraction）
+    alphav.x[] = fm.x[]/rho(ff);   //alphav 是无量纲化动量方程中的 系数 α = 1/ρ    计算每个面的 1/ρ，并乘以该面被流体占据的比例 fm.x[]，以得到正确的加权结果
+    if (mu1 || mu2) {   //如果两相的黏度不为零，则计算每个面的面心黏度 μv.x[]
+      face vector muv = mu;   
+      muv.x[] = fm.x[]*mu(ff);
+    }
+  }
+  
+  foreach()
+    rhov[] = cm[]*rho(sf[]);   //计算每个单元中“流体部分”的有效密度
+
+#if TREE
+  sf.prolongation = fraction_refine;     //告诉 Basilisk 在网格细化时，如何插值体积分数 sf
+  sf.dirty = true; // boundary conditions need to be updated
+#endif
+}
+
+centered.h:250
+event properties (i++,last); //调用event properties
+
+i=1
+
+perfs.h:7
+event perfs (i += 1) {          //自动将当前时间步的 时间、步长、MG（多重网格）迭代信息、网格规模、性能指标等 写入文件 perfs
+  static FILE * fp = fopen ("perfs", "w");
+  if (i == 0)
+    fprintf (fp,  "t dt mgp.i mgp.nrelax mgpf.i mgpf.nrelax mgu.i mgu.nrelax "
+	     "grid->tn perf.t perf.speed npe perf.ispeed\n");
+  static double start = 0.;
+  if (i > 10 && perf.t - start < 1.) return 0;           //当运行时间 perf.t 比上次输出超过 1 秒时，才会写入一次。前 10 步不写入（跳过初始阶段，因为初始化可能性能不稳定）
+  fprintf (fp, "%g %g %d %d %d %d %d %d %ld %g %g %d %g\n", 
+	   t, dt, mgp.i, mgp.nrelax, mgpf.i, mgpf.nrelax, mgu.i, mgu.nrelax,
+	   grid->tn, perf.t, perf.speed, npe(), perf.ispeed);
+  fflush (fp);
+  start = perf.t;     //更新 start，记录本次写入的时间
+}
+
+centered.h:229
+event set_dtmax (i++,last) dtmax = DT;   //强制设定最大时间步长 dtmax = DT
+
+tension.h:36   
+event stability (i++)
+{
+
+  /**
+  We first compute the minimum and maximum values of $\alpha/f_m =
+  1/\rho$, as well as $\Delta_{min}$. */   //首先计算 α/fm=1/ρ 的最小值和最大值，以及 Δmin
+
+  double amin = HUGE, amax = -HUGE, dmin = HUGE;
+  foreach_face (reduction(min:amin) reduction(max:amax) reduction(min:dmin))
+    if (fm.x[] > 0.) {    //只考虑 fm.x[] > 0 的面（即处于流体内部的面）
+      if (alpha.x[]/fm.x[] > amax) amax = alpha.x[]/fm.x[];
+      if (alpha.x[]/fm.x[] < amin) amin = alpha.x[]/fm.x[];
+      if (Delta < dmin) dmin = Delta;
+    }
+  double rhom = (1./amin + 1./amax)/2.;   //计算平均密度
+
+  /**
+  The maximum timestep is set using the sum of surface tension
+  coefficients. */    //最大时间步长通过表面张力系数之和来设置
+
+  double sigma = 0.;
+  for (scalar c in interfaces)
+    sigma += c.sigma;
+  if (sigma) {
+    double dt = sqrt (rhom*cube(dmin)/(pi*sigma));  //根据表面张力时间步稳定条件：Δt≤sqrt(ρm Δmin⁡3/(π σ)​)计算表面张力稳定条件对应的时间步
+    if (dt < dtmax)
+      dtmax = dt;
+  }
+}
+
+vof.h:140    
+event stability (i++) {
+  if (CFL > 0.5)
+    CFL = 0.5;    //确保 CFL 小于 0.5
+}
+
+centered.h:231   
+event stability (i++,last) {
+  dt = dtnext (stokes ? dtmax : timestep (uf, dtmax));  //设置时间步长dt,若为Stokes 方程，直接使用最大时间步。 否则根据CFL 条件和面速度 uf 计算安全时间步
+}
+
+vof.h:380
+
+event vof (i++)
+  vof_advection (interfaces, i); // 对应于相变文章3数值方法部分，使用分裂输运法对该方程进行离散，把二维/三维输运问题分裂为多个一维守恒对流问题；每个方向单独求解
+
+centered.h:241
+event vof (i++,last); //调用event vof
+
+two-phase-generic.h:50
+
+event tracer_advection (i++)
+{
+  
+  /**
+  When using smearing of the density jump, we initialise *sf* with the    //在一些两相流模拟中，为了避免由于密度或粘度跳跃（discontinuous jump）导致的数值震荡
+  vertex-average of *f*. */     //我们不直接使用 f（体积分数），而是构造一个平滑的版本 sf
+
+#ifndef sf
+#if dimension <= 2
+  foreach()
+    sf[] = (4.*f[] + 
+	    2.*(f[0,1] + f[0,-1] + f[1,0] + f[-1,0]) +
+	    f[-1,-1] + f[1,-1] + f[1,1] + f[-1,1])/16.;
+#else // dimension == 3
+  foreach()
+    sf[] = (8.*f[] +
+	    4.*(f[-1] + f[1] + f[0,1] + f[0,-1] + f[0,0,1] + f[0,0,-1]) +
+	    2.*(f[-1,1] + f[-1,0,1] + f[-1,0,-1] + f[-1,-1] + 
+		f[0,1,1] + f[0,1,-1] + f[0,-1,1] + f[0,-1,-1] +
+		f[1,1] + f[1,0,1] + f[1,-1] + f[1,0,-1]) +
+	    f[1,-1,1] + f[-1,1,1] + f[-1,1,-1] + f[1,1,1] +
+	    f[1,1,-1] + f[-1,-1,-1] + f[1,-1,-1] + f[-1,-1,1])/64.;
+#endif
+#endif // !sf
+
+#if TREE
+  sf.prolongation = refine_bilinear;   //指定 sf 在网格加密时使用双线性插值（平滑过渡)
+  sf.dirty = true; // boundary conditions need to be updated  //标记sf的边界条件需要更新。 通过以上两步确保在 AMR 细化/粗化时，平滑场 sf 的插值保持连续、无跳变。
+#endif
+}
+
+centered.h:242
+event tracer_advection (i++,last);  //调用event tracer_advection
+
+centered.h:243
+event tracer_diffusion (i++,last);   //调用event tracer_diffusion 这个事件定义在henry.h中  在每个时间步中，对伴随体积分数 f 的示踪场（如浓度、温度等）求解扩散方程
+
+two-phase-generic.h:83
+event properties (i++)  // 第二次调用event properties   根据平滑后的体积分数sf计算每个单元中的密度
+{
+  foreach_face() {
+    double ff = (sf[] + sf[-1])/2.;
+    alphav.x[] = fm.x[]/rho(ff);
+    if (mu1 || mu2) {
+      face vector muv = mu;
+      muv.x[] = fm.x[]*mu(ff);
+    }
+  }
+  
+  foreach()
+    rhov[] = cm[]*rho(sf[]);
+
+#if TREE
+  sf.prolongation = fraction_refine;
+  sf.dirty = true; // boundary conditions need to be updated
+#endif
+}
+
+centered.h:250
+event properties (i++,last); //在centered.h中执行event properties 确保在执行后面的event时已通过event properties计算了密度
+
+centered.h:323
+event advection_term (i++,last)
+{                                  //投影法求解速度场对流项    对应于相变文章中的公式（20）-（24）
+  if (!stokes) {
+    prediction(); //预测中间速度场 u∗   
+	mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);   //半步压力投影,确保速度场无散
+    advection ((scalar *){u}, uf, dt, (scalar *){g});   //显式求解对流项
+  }
+}
+
+centered.h:352
+event viscous_term (i++,last)    //隐式求解黏性扩散项 对应相变文章公式（25）-（29）
+{
+  if (constant(mu.x) != 0.) {         //检查粘度是否为0，若黏度为 0，流动是无黏性的，就跳过
+    correction (dt);             //调用函数correction，将重力加速度加到速度场 上
+    mgu = viscosity (u, mu, rho, dt, mgu.nrelax);  //调用 Basilisk 内置函数 viscosity()，隐式求解黏性扩散项：∂u/∂t=1/ρ∇⋅(μ∇u) 
+    correction (-dt);        //将之前加上的重力修正撤回，这样做到了只在黏性求解“临时”考虑了重力，但不改变速度的物理值
+  }
+  /**
+  We reset the acceleration field (if it is not a constant). */
+
+  if (!is_constant(a.x)) {    //检查 a.x（x 方向的加速度分量）是否恒定
+    face vector af = a;  //创建一个 面向量 af，引用加速度向量 a
+    trash ({af});  //清理 缓存或临时数据。保证 af 的数据干净，不受之前时间步残留值影响
+    foreach_face()
+      af.x[] = 0.;  //把 x 方向的加速度 af.x[] 置为 0
+  }
+}
+
+bubble.c:141
+event acceleration (i++) {   //源项中的加速度项 对应论文中的公式（20）-（24）
+  face vector av = a;
+  foreach_face(y)
+    av.y[] -= 1.;     //遍历所有 y 方向的网格面，在 y 方向上施加 -1 的加速度（沿 负 y 方向、大小为 1 ）
+}
+
+tension.h:72
+event acceleration (i++)          // 源项中的表面张力项  对应论文中的公式（20）-（24）  计算界面曲率 κ，得到势函数 φ = σ κ
+{
+  
+  /**
+  We check for all VOF interfaces for which $\sigma$ is non-zero. */
+
+  for (scalar f in interfaces)
+    if (f.sigma) {
+      
+      /**
+      If $\phi$ is already allocated, we add $\sigma\kappa$, otherwise
+      we allocate a new field and set it to $\sigma\kappa$. */
+
+      scalar phi = f.phi;
+      if (phi.i)            //检查是否已有压力修正场 phi  f.phi 是用于存储表面张力势（potential）的标量场；如果已经分配过，就在其中累加曲率项
+	curvature (f, phi, f.sigma, add = true);    //计算：ϕ=σκ
+      else {             //没有压力修正场 phi 
+	phi = new scalar;   //定义新的phi
+	curvature (f, phi, f.sigma, add = false);   //计算κ=−∇⋅n和ϕ=σκ
+	f.phi = phi;
+      }
+    }
+}
+
+iforce.h:45
+event acceleration (i++)   //将几何VOF界面计算得到的表面张力势 φ = σ κ 转化为界面力加速度项 α φ ∇f 并加入动量方程  源项中的表面张力项 对应相变文章公式（20）-（24）
+{
+  
+  /**
+  We check for all VOF interfaces for which $\phi$ is allocated. The
+  corresponding volume fraction fields will be stored in *list*. */
+
+  scalar * list = NULL;
+  for (scalar f in interfaces)
+    if (f.phi.i) {
+      list = list_add (list, f);   //收集所有有表面张力的界面,将界面中的表面张力势加入到列表中
+
+      /**
+      To avoid undeterminations due to round-off errors, we remove
+      values of the volume fraction larger than one or smaller than
+      zero. */
+
+      foreach()
+	f[] = clamp (f[], 0., 1.);   //避免由于舍入误差导致的不确定性，移除体积分数大于一或小于零的值
+    }    
+
+  /**
+  On trees we need to make sure that the volume fraction gradient
+  is computed exactly like the pressure gradient. This is necessary to
+  ensure well-balancing of the pressure gradient and interfacial force
+  term. To do so, we apply the same prolongation to the volume
+  fraction field as applied to the pressure field. */    //在树形结构上，确保体积分数梯度与压力梯度计算方式完全相同。这是为了确保压力梯度和界面力项的良好平衡。为此，对体积分数场应用与压力场相同的插值方法
+  
+#if TREE
+  for (scalar f in list) {
+    f.prolongation = p.prolongation;
+    f.dirty = true; // boundary conditions need to be updated
+  }
+#endif
+
+  /**
+  Finally, for each interface for which $\phi$ is allocated, we
+  compute the interfacial force acceleration
+  $$
+  \phi\mathbf{n}\delta_s/\rho \approx \alpha\phi\nabla f
+  $$ 
+  */   对于每个有表面张力势 ϕ的界面，计算界面力加速度ϕnδs/ρ≈αϕ∇f
+
+  face vector ia = a;
+  foreach_face()
+    for (scalar f in list)
+      if (f[] != f[-1] && fm.x[] > 0.) {
+
+	/**
+	We need to compute the potential *phif* on the face, using its
+	values at the center of the cell. If both potentials are
+	defined, we take the average, otherwise we take a single
+	value. If all fails we set the potential to zero: this should
+	happen only because of very pathological cases e.g. weird
+	boundary conditions for the volume fraction. */
+	
+	scalar phi = f.phi;
+	double phif =
+	  (phi[] < nodata && phi[-1] < nodata) ?
+	  (phi[] + phi[-1])/2. :
+	  phi[] < nodata ? phi[] :
+	  phi[-1] < nodata ? phi[-1] :
+	  0.;
+
+	ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
+      }
+
+  /**
+  On trees, we need to restore the prolongation values for the
+  volume fraction field. */
+  
+#if TREE
+  for (scalar f in list) {
+    f.prolongation = fraction_refine;
+    f.dirty = true; // boundary conditions need to be updated
+  }
+#endif
+  
+  /**
+  Finally we free the potential fields and the list of volume
+  fractions. */
+
+  for (scalar f in list) {
+    scalar phi = f.phi;
+    delete ({phi});
+    f.phi.i = 0;
+  }
+  free (list);
+}
+
+centered.h:388
+event acceleration (i++,last) //对应相变文章公式（21）-（22）
+{
+  trash ({uf});
+  foreach_face()
+    uf.x[] = fm.x[]*(face_value (u.x, 0) + dt*a.x[]);   //对于每个面，先把中心速度插值到该面，再加上加速度贡献 dt⋅a，并乘以面分数，得到预测的面速度 uf（用于后续的对流通量计算与压力投影）
+}    
+centered.h:428
+event projection (i++,last)  
+{
+  mgp = project (uf, p, alpha, dt, mgp.nrelax);   //调用 Basilisk 内置的 投影求解器  求解压力泊松方程修正面速度（uf）：uf←uf−Δt α ∇p
+  centered_gradient (p, g);   //计算并存储压力梯度场
+
+  /**
+  We add the gradient field *g* to the centered velocity field. */
+
+  correction (dt);      //将压力梯度场作用到中心速度场u  用压力修正中心速度，使动量方程完整并保持无散度条件
+}
+
+centered.h:443
+event end_timestep (i++, last);  //在 时间步结束（end_timestep）阶段 通过曲率项 κ对界面处的表面张力贡献引起的压力跳跃效应进行修正
+event end_timestep (i++) //定义在compressible/tension.h
+{
+  if (f.sigma > 0.) {
+    scalar skappa[];
+    curvature (f, skappa, f.sigma);    //计算界面曲率 κ
+
+    // Here we just introduce the correction due to the surface tension contribution to the pressure jump.//仅介绍表面张力对压力跳跃的贡献引起的修正
+
+    face vector upf[];
+    for (scalar fE in {fE1, fE2}) {  //要修正的标量 fE ,fE表示两个与界面有关的“能量”或“浓度”场
+      foreach_face() {
+	double fr = f[1], fl = f[];
+	if (!fE.inverse)
+	  fr = 1. - fr, fl = 1. - fl;
+	if (fr + fl > 0. && fr + fl < 2.) {
+	  if (fr > fl)
+	    upf.x[] = uf.x[]*fl*skappa[];
+	  else
+	    upf.x[] = uf.x[]*fr*skappa[1];
+	}
+	else
+	  upf.x[] = 0.;
+      }           //构造表面张力修正通量
+
+      foreach() {
+	double div = 0.;
+	foreach_dimension()
+	  div += upf.x[1] - upf.x[];
+	fE[] -= (fE.inverse ? 1. - f[] : f[])*div/Delta*dt/cm[];       //修正每个单元的能量或浓度，使其包含界面处表面张力引起的压力跳跃贡献
+      }
+    }
+  }
+}
+
+bubble.c:151
+event adapt (i++) {
+  double uemax = 1e-2;
+  adapt_wavelet ({f,u}, (double[]){0.01,uemax,uemax,uemax}, LEVEL, 5);   //体积分数和速度场的变化来判断是否细化网格
+}
+
+centered.h:453
+event adapt (i++,last) {
+#if EMBED         //在每个时间步结束时，清理嵌入边界（solid geometry）的体积分数与速度通量信息
+  fractions_cleanup (cs, fs);       //清理由于网格细化/粗化或浮点误差导致的非法体积分数
+  foreach_face()
+    if (uf.x[] && !fs.x[])
+      uf.x[] = 0.; 			//确保在固体边界上，速度为零
+#endif
+  event ("properties");  //调用 properties 事件重新计算流体物性
+}
+#endif
+
+two-phase-generic.h:83
+event properties (i++)
+{
+  foreach_face() {
+    double ff = (sf[] + sf[-1])/2.;  //计算两个相邻单元的平均体积分数  sf[]：体积分数（volume fraction）
+    alphav.x[] = fm.x[]/rho(ff);   //alphav 是无量纲化动量方程中的 系数 α = 1/ρ    计算每个面的 1/ρ，并乘以该面被流体占据的比例 fm.x[]，以得到正确的加权结果
+    if (mu1 || mu2) {   //如果两相的黏度不为零，则计算每个面的面心黏度 μv.x[]
+      face vector muv = mu;   
+      muv.x[] = fm.x[]*mu(ff);
+    }
+  }
+  
+  foreach()
+    rhov[] = cm[]*rho(sf[]);   //计算每个单元中“流体部分”的有效密度
+
+#if TREE
+  sf.prolongation = fraction_refine;     //告诉 Basilisk 在网格细化时，如何插值体积分数 sf
+  sf.dirty = true; // boundary conditions need to be updated
+#endif
+}
+
+centered.h:250
+event properties (i++,last); //调用event properties
