@@ -525,14 +525,14 @@ event viscous_term (i++,last)    //隐式求解黏性扩散项 对应相变文�
 }
 
 bubble.c:141
-event acceleration (i++) {
+event acceleration (i++) {   //源项中的加速度项 对应论文中的公式（20）-（24）
   face vector av = a;
   foreach_face(y)
     av.y[] -= 1.;     //遍历所有 y 方向的网格面，在 y 方向上施加 -1 的加速度（沿 负 y 方向、大小为 1 ）
 }
 
 tension.h:72
-event acceleration (i++)
+event acceleration (i++)          // 源项中的表面张力项  对应论文中的公式（20）-（24）  计算界面曲率 κ，得到势函数 φ = σ κ
 {
   
   /**
@@ -546,12 +546,127 @@ event acceleration (i++)
       we allocate a new field and set it to $\sigma\kappa$. */
 
       scalar phi = f.phi;
-      if (phi.i)
-	curvature (f, phi, f.sigma, add = true);
-      else {
-	phi = new scalar;
-	curvature (f, phi, f.sigma, add = false);
+      if (phi.i)            //检查是否已有压力修正场 phi  f.phi 是用于存储表面张力势（potential）的标量场；如果已经分配过，就在其中累加曲率项
+	curvature (f, phi, f.sigma, add = true);    //计算：ϕ=σκ
+      else {             //没有压力修正场 phi 
+	phi = new scalar;   //定义新的phi
+	curvature (f, phi, f.sigma, add = false);   //计算κ=−∇⋅n和ϕ=σκ
 	f.phi = phi;
       }
     }
 }
+
+iforce.h:45
+event acceleration (i++)   //将几何VOF界面计算得到的表面张力势 φ = σ κ 转化为界面力加速度项 α φ ∇f 并加入动量方程  源项中的表面张力项 对应相变文章公式（20）-（24）
+{
+  
+  /**
+  We check for all VOF interfaces for which $\phi$ is allocated. The
+  corresponding volume fraction fields will be stored in *list*. */
+
+  scalar * list = NULL;
+  for (scalar f in interfaces)
+    if (f.phi.i) {
+      list = list_add (list, f);   //收集所有有表面张力的界面,将界面中的表面张力势加入到列表中
+
+      /**
+      To avoid undeterminations due to round-off errors, we remove
+      values of the volume fraction larger than one or smaller than
+      zero. */
+
+      foreach()
+	f[] = clamp (f[], 0., 1.);   //避免由于舍入误差导致的不确定性，移除体积分数大于一或小于零的值
+    }    
+
+  /**
+  On trees we need to make sure that the volume fraction gradient
+  is computed exactly like the pressure gradient. This is necessary to
+  ensure well-balancing of the pressure gradient and interfacial force
+  term. To do so, we apply the same prolongation to the volume
+  fraction field as applied to the pressure field. */    //在树形结构上，确保体积分数梯度与压力梯度计算方式完全相同。这是为了确保压力梯度和界面力项的良好平衡。为此，对体积分数场应用与压力场相同的插值方法
+  
+#if TREE
+  for (scalar f in list) {
+    f.prolongation = p.prolongation;
+    f.dirty = true; // boundary conditions need to be updated
+  }
+#endif
+
+  /**
+  Finally, for each interface for which $\phi$ is allocated, we
+  compute the interfacial force acceleration
+  $$
+  \phi\mathbf{n}\delta_s/\rho \approx \alpha\phi\nabla f
+  $$ 
+  */   对于每个有表面张力势 ϕ的界面，计算界面力加速度ϕnδs/ρ≈αϕ∇f
+
+  face vector ia = a;
+  foreach_face()
+    for (scalar f in list)
+      if (f[] != f[-1] && fm.x[] > 0.) {
+
+	/**
+	We need to compute the potential *phif* on the face, using its
+	values at the center of the cell. If both potentials are
+	defined, we take the average, otherwise we take a single
+	value. If all fails we set the potential to zero: this should
+	happen only because of very pathological cases e.g. weird
+	boundary conditions for the volume fraction. */
+	
+	scalar phi = f.phi;
+	double phif =
+	  (phi[] < nodata && phi[-1] < nodata) ?
+	  (phi[] + phi[-1])/2. :
+	  phi[] < nodata ? phi[] :
+	  phi[-1] < nodata ? phi[-1] :
+	  0.;
+
+	ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
+      }
+
+  /**
+  On trees, we need to restore the prolongation values for the
+  volume fraction field. */
+  
+#if TREE
+  for (scalar f in list) {
+    f.prolongation = fraction_refine;
+    f.dirty = true; // boundary conditions need to be updated
+  }
+#endif
+  
+  /**
+  Finally we free the potential fields and the list of volume
+  fractions. */
+
+  for (scalar f in list) {
+    scalar phi = f.phi;
+    delete ({phi});
+    f.phi.i = 0;
+  }
+  free (list);
+}
+
+centered.h:388
+event acceleration (i++,last) //对应相变文章公式（21）-（22）
+{
+  trash ({uf});
+  foreach_face()
+    uf.x[] = fm.x[]*(face_value (u.x, 0) + dt*a.x[]);   //对于每个面，先把中心速度插值到该面，再加上加速度贡献 dt⋅a，并乘以面分数，得到预测的面速度 uf（用于后续的对流通量计算与压力投影）
+}    
+centered.h:428
+event projection (i++,last)  
+{
+  mgp = project (uf, p, alpha, dt, mgp.nrelax);   //调用 Basilisk 内置的 投影求解器  求解压力泊松方程修正面速度（uf）：uf←uf−Δt α ∇p
+  centered_gradient (p, g);   //计算并存储压力梯度场
+
+  /**
+  We add the gradient field *g* to the centered velocity field. */
+
+  correction (dt);      //将压力梯度场作用到中心速度场u  用压力修正中心速度，使动量方程完整并保持无散度条件
+}
+
+centered.h:443
+event end_timestep (i++, last);
+
+centered.h:453
